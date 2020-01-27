@@ -3,30 +3,63 @@ var bodyParser = require('body-parser')
 var app = express()
 var http = require('http').Server(app)
 var io = require('socket.io')(http)
+var mongoose = require('mongoose')
+var options = require('./options.js')
+
 
 app.use(express.static(__dirname))
 app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({extended:false}))
+app.use(bodyParser.urlencoded({ extended: false }))
 
-var messages = [
-    {name: 'Harsh', message: "Hi"},
-    {name: 'Hitansh', message: "Hello"}
-]
+mongoose.Promise = Promise
+
+var dburl = options.mongodburl //'mongodb://user:user@ds155424.mlab.com:55424/learning-node'
+
+var Message = mongoose.model('Message', {
+    name: String,
+    message: String
+})
 
 app.get('/messages', (req, res) => {
-    res.send(messages)
+    Message.find({}, (err, messages) => {
+        res.send(messages)
+    })
 })
 
-app.post('/messages', (req, res) => {
-    messages.push(req.body)
-    io.emit('message', req.body)
-    res.sendStatus(200)
+app.post('/messages', async (req, res) => {
+    try {
+        var message = new Message(req.body)
+
+        var savedMessage = await message.save()
+    
+        console.log('saved')
+    
+        var censored = await Message.findOne({ message: 'badword' })
+    
+        if (censored) 
+            await Message.remove({ _id: censored.id })
+        else
+            io.emit('message', req.body)
+    
+        res.sendStatus(200)
+    } catch(error){
+        res.sendStatus(500)
+        return console.error(error)
+    } finally {
+        console.log('Message post called')
+    }
 })
+
+
 
 io.on('connection', (socket) => {
-    console.log('user connected')
+    console.log('a user connected')
+})
+
+mongoose.connect(dburl, {useNewUrlParser:true, useUnifiedTopology:true }, (err) => {
+    console.log('mongo db connection', err)
 })
 
 var server = http.listen(3000, () => {
-    console.log('Server is listening on', server.address().port)
+    console.log('server is listening on port', server.address().port)
 })
